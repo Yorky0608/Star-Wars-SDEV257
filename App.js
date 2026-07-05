@@ -3,7 +3,17 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  FlatList,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
 const Tab = createBottomTabNavigator();
 const Drawer = createDrawerNavigator();
@@ -12,6 +22,9 @@ function ScreenContent({ endpoint, getItemLabel, screenName }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [submittedSearchTerm, setSubmittedSearchTerm] = useState('');
+  const [isModalVisible, setIsModalVisible] = useState(false);
 
   const loadItems = async () => {
     setLoading(true);
@@ -44,6 +57,17 @@ function ScreenContent({ endpoint, getItemLabel, screenName }) {
   useEffect(() => {
     loadItems();
   }, [endpoint]);
+
+  const handleSearchSubmit = () => {
+    const trimmedSearchTerm = searchTerm.trim();
+
+    if (!trimmedSearchTerm) {
+      return;
+    }
+
+    setSubmittedSearchTerm(trimmedSearchTerm);
+    setIsModalVisible(true);
+  };
 
   const renderItem = ({ item }) => (
     <View style={styles.card}>
@@ -85,7 +109,37 @@ function ScreenContent({ endpoint, getItemLabel, screenName }) {
   return (
     <View style={styles.container}>
       <Text style={styles.heading}>{screenName}</Text>
+      <View style={styles.searchRow}>
+        <TextInput
+          onChangeText={setSearchTerm}
+          onSubmitEditing={handleSearchSubmit}
+          placeholder={`Search ${screenName}`}
+          placeholderTextColor="#7b8794"
+          returnKeyType="search"
+          style={styles.searchInput}
+          value={searchTerm}
+        />
+        <Pressable onPress={handleSearchSubmit} style={styles.searchButton}>
+          <Text style={styles.searchButtonText}>Submit</Text>
+        </Pressable>
+      </View>
       {content()}
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setIsModalVisible(false)}
+        transparent
+        visible={isModalVisible}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Submitted Search</Text>
+            <Text style={styles.modalValue}>{submittedSearchTerm}</Text>
+            <Pressable onPress={() => setIsModalVisible(false)} style={styles.modalButton}>
+              <Text style={styles.modalButtonText}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
       <StatusBar style="dark" />
     </View>
   );
@@ -163,6 +217,33 @@ const styles = StyleSheet.create({
     color: '#102a43',
     textAlign: 'center',
   },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 16,
+  },
+  searchInput: {
+    flex: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#bcccdc',
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    color: '#102a43',
+    fontSize: 16,
+  },
+  searchButton: {
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: '#0b5fff',
+  },
+  searchButtonText: {
+    color: '#ffffff',
+    fontWeight: '600',
+  },
   listContent: {
     paddingBottom: 24,
   },
@@ -205,5 +286,43 @@ const styles = StyleSheet.create({
   retryButtonText: {
     color: '#ffffff',
     fontWeight: '600',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(16, 42, 67, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    width: '100%',
+    borderRadius: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    gap: 14,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#102a43',
+  },
+  modalValue: {
+    fontSize: 18,
+    color: '#243b53',
+    textAlign: 'center',
+  },
+  modalButton: {
+    minWidth: 96,
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#0b5fff',
+  },
+  modalButtonText: {
+    color: '#ffffff',
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });
