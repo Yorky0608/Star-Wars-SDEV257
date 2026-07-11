@@ -5,6 +5,7 @@ import { createDrawerNavigator } from '@react-navigation/drawer';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Modal,
   Platform,
@@ -25,6 +26,7 @@ function ScreenContent({ endpoint, getItemLabel, screenName }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [submittedSearchTerm, setSubmittedSearchTerm] = useState('');
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const listAnimation = useState(() => new Animated.Value(0))[0];
 
   const loadItems = async () => {
     setLoading(true);
@@ -57,6 +59,20 @@ function ScreenContent({ endpoint, getItemLabel, screenName }) {
   useEffect(() => {
     loadItems();
   }, [endpoint]);
+
+  useEffect(() => {
+    if (loading || error || items.length === 0) {
+      return;
+    }
+
+    listAnimation.setValue(0);
+
+    Animated.timing(listAnimation, {
+      toValue: 1,
+      duration: 350,
+      useNativeDriver: true,
+    }).start();
+  }, [error, items.length, listAnimation, loading]);
 
   const handleSearchSubmit = () => {
     const trimmedSearchTerm = searchTerm.trim();
@@ -97,12 +113,29 @@ function ScreenContent({ endpoint, getItemLabel, screenName }) {
     }
 
     return (
-      <FlatList
-        contentContainerStyle={styles.listContent}
-        data={items}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-      />
+      <Animated.View
+        style={[
+          styles.animatedList,
+          {
+            opacity: listAnimation,
+            transform: [
+              {
+                translateY: listAnimation.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [18, 0],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        <FlatList
+          contentContainerStyle={styles.listContent}
+          data={items}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+        />
+      </Animated.View>
     );
   };
 
@@ -246,6 +279,9 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: 24,
+  },
+  animatedList: {
+    flex: 1,
   },
   card: {
     width: '100%',
