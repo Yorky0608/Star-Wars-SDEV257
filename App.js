@@ -2,28 +2,65 @@ import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createDrawerNavigator } from '@react-navigation/drawer';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 
 const Tab = createBottomTabNavigator();
 const Drawer = createDrawerNavigator();
+
+function SwipeableListItem({ item, onOpen }) {
+  const swipeableRef = useRef(null);
+
+  const handleOpen = () => {
+    swipeableRef.current?.close();
+    onOpen(item.label);
+  };
+
+  const renderSwipeAction = () => (
+    <View style={styles.swipeAction}>
+      <Text style={styles.swipeActionText}>View</Text>
+    </View>
+  );
+
+  return (
+    <Swipeable
+      containerStyle={styles.swipeableContainer}
+      friction={2}
+      overshootLeft={false}
+      overshootRight={false}
+      ref={swipeableRef}
+      renderLeftActions={renderSwipeAction}
+      renderRightActions={renderSwipeAction}
+      rightThreshold={40}
+      leftThreshold={40}
+      onSwipeableOpen={handleOpen}
+    >
+      <View style={styles.card}>
+        <Text style={styles.cardText}>{item.label}</Text>
+      </View>
+    </Swipeable>
+  );
+}
 
 function ScreenContent({ endpoint, getItemLabel, screenName }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [submittedSearchTerm, setSubmittedSearchTerm] = useState('');
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalValue, setModalValue] = useState('');
   const [isModalVisible, setIsModalVisible] = useState(false);
 
   const loadItems = async () => {
@@ -65,15 +102,16 @@ function ScreenContent({ endpoint, getItemLabel, screenName }) {
       return;
     }
 
-    setSubmittedSearchTerm(trimmedSearchTerm);
+    setModalTitle('Submitted Search');
+    setModalValue(trimmedSearchTerm);
     setIsModalVisible(true);
   };
 
-  const renderItem = ({ item }) => (
-    <View style={styles.card}>
-      <Text style={styles.cardText}>{item.label}</Text>
-    </View>
-  );
+  const handleItemSwipe = (itemLabel) => {
+    setModalTitle('Swiped Item');
+    setModalValue(itemLabel);
+    setIsModalVisible(true);
+  };
 
   const content = () => {
     if (loading) {
@@ -97,12 +135,14 @@ function ScreenContent({ endpoint, getItemLabel, screenName }) {
     }
 
     return (
-      <FlatList
+      <ScrollView
         contentContainerStyle={styles.listContent}
-        data={items}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-      />
+        keyboardShouldPersistTaps="handled"
+      >
+        {items.map((item) => (
+          <SwipeableListItem item={item} key={item.id} onOpen={handleItemSwipe} />
+        ))}
+      </ScrollView>
     );
   };
 
@@ -132,8 +172,8 @@ function ScreenContent({ endpoint, getItemLabel, screenName }) {
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Submitted Search</Text>
-            <Text style={styles.modalValue}>{submittedSearchTerm}</Text>
+            <Text style={styles.modalTitle}>{modalTitle}</Text>
+            <Text style={styles.modalValue}>{modalValue}</Text>
             <Pressable onPress={() => setIsModalVisible(false)} style={styles.modalButton}>
               <Text style={styles.modalButtonText}>Close</Text>
             </Pressable>
@@ -197,13 +237,18 @@ function AndroidDrawer() {
 
 export default function App() {
   return (
-    <NavigationContainer>
-      {Platform.OS === 'android' ? <AndroidDrawer /> : <IosTabs />}
-    </NavigationContainer>
+    <GestureHandlerRootView style={styles.root}>
+      <NavigationContainer>
+        {Platform.OS === 'android' ? <AndroidDrawer /> : <IosTabs />}
+      </NavigationContainer>
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     paddingHorizontal: 18,
@@ -247,14 +292,29 @@ const styles = StyleSheet.create({
   listContent: {
     paddingBottom: 24,
   },
+  swipeableContainer: {
+    marginBottom: 10,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  swipeAction: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0b5fff',
+    minHeight: 66,
+  },
+  swipeActionText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   card: {
     width: '100%',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    marginBottom: 10,
     borderWidth: 1,
     borderColor: '#bcccdc',
-    borderRadius: 12,
     backgroundColor: '#ffffff',
   },
   cardText: {
