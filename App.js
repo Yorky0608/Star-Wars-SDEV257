@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Animated,
   FlatList,
+  Image,
   Modal,
   Platform,
   Pressable,
@@ -18,8 +19,42 @@ import {
 
 const Tab = createBottomTabNavigator();
 const Drawer = createDrawerNavigator();
+const headerImages = {
+  planets: require('./images/planets.jpg'),
+  films: require('./images/films.jpg'),
+  spaceships: require('./images/ships.jpg'),
+};
 
-function ScreenContent({ endpoint, getItemLabel, screenName }) {
+function LazyHeaderImage({ source }) {
+  const [shouldLoadImage, setShouldLoadImage] = useState(false);
+  const [isImageLoading, setIsImageLoading] = useState(true);
+
+  useEffect(() => {
+    setShouldLoadImage(true);
+  }, []);
+
+  return (
+    <View style={styles.headerImageFrame}>
+      {!shouldLoadImage || isImageLoading ? (
+        <View style={styles.headerImagePlaceholder}>
+          <ActivityIndicator color="#f3c742" />
+          <Text style={styles.headerImagePlaceholderText}>Loading galactic display...</Text>
+        </View>
+      ) : null}
+      {shouldLoadImage ? (
+        <Image
+          onLoadEnd={() => setIsImageLoading(false)}
+          onLoadStart={() => setIsImageLoading(true)}
+          resizeMode="cover"
+          source={source}
+          style={styles.headerImage}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+function ScreenContent({ endpoint, getItemLabel, headerImageSource, screenName }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -141,6 +176,7 @@ function ScreenContent({ endpoint, getItemLabel, screenName }) {
 
   return (
     <View style={styles.container}>
+      <LazyHeaderImage source={headerImageSource} />
       <Text style={styles.heading}>{screenName}</Text>
       <View style={styles.searchRow}>
         <TextInput
@@ -183,6 +219,7 @@ function PlanetsScreen() {
     <ScreenContent
       endpoint="https://www.swapi.tech/api/planets"
       getItemLabel={(item) => item.name}
+      headerImageSource={headerImages.planets}
       screenName="Planets"
     />
   );
@@ -193,6 +230,7 @@ function FilmsScreen() {
     <ScreenContent
       endpoint="https://www.swapi.tech/api/films"
       getItemLabel={(item) => item.title || item.properties?.title}
+      headerImageSource={headerImages.films}
       screenName="Films"
     />
   );
@@ -203,6 +241,7 @@ function SpaceshipsScreen() {
     <ScreenContent
       endpoint="https://www.swapi.tech/api/starships"
       getItemLabel={(item) => item.name}
+      headerImageSource={headerImages.spaceships}
       screenName="Spaceships"
     />
   );
@@ -242,6 +281,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 18,
     backgroundColor: '#f4f7fb',
+  },
+  headerImageFrame: {
+    height: 152,
+    marginBottom: 16,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: '#0f172a',
+  },
+  headerImagePlaceholder: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: '#0f172a',
+    zIndex: 1,
+  },
+  headerImagePlaceholderText: {
+    color: '#d9e2ec',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  headerImage: {
+    width: '100%',
+    height: '100%',
   },
   heading: {
     marginBottom: 12,
