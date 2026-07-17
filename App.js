@@ -1,4 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
+import { useNetworkState } from 'expo-network';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createDrawerNavigator } from '@react-navigation/drawer';
@@ -55,6 +56,7 @@ function LazyHeaderImage({ source }) {
 }
 
 function ScreenContent({ endpoint, getItemLabel, headerImageSource, screenName }) {
+  const networkState = useNetworkState();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -62,8 +64,17 @@ function ScreenContent({ endpoint, getItemLabel, headerImageSource, screenName }
   const [submittedSearchTerm, setSubmittedSearchTerm] = useState('');
   const [isModalVisible, setIsModalVisible] = useState(false);
   const listAnimation = useState(() => new Animated.Value(0))[0];
+  const isOffline =
+    networkState.isConnected === false || networkState.isInternetReachable === false;
 
   const loadItems = async () => {
+    if (isOffline) {
+      setItems([]);
+      setError('No internet connection. Reconnect to the network and try again.');
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError('');
 
@@ -93,7 +104,7 @@ function ScreenContent({ endpoint, getItemLabel, headerImageSource, screenName }
 
   useEffect(() => {
     loadItems();
-  }, [endpoint]);
+  }, [endpoint, isOffline]);
 
   useEffect(() => {
     if (loading || error || items.length === 0) {
@@ -139,9 +150,10 @@ function ScreenContent({ endpoint, getItemLabel, headerImageSource, screenName }
     if (error) {
       return (
         <View style={styles.centeredState}>
-          <Text style={styles.errorText}>Error: {error}</Text>
+          <Text style={styles.errorTitle}>{isOffline ? 'You are offline' : 'Unable to load data'}</Text>
+          <Text style={styles.errorText}>{error}</Text>
           <Pressable onPress={loadItems} style={styles.retryButton}>
-            <Text style={styles.retryButtonText}>Try Again</Text>
+            <Text style={styles.retryButtonText}>{isOffline ? 'Retry Connection' : 'Try Again'}</Text>
           </Pressable>
         </View>
       );
@@ -375,6 +387,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
     marginBottom: 12,
+  },
+  errorTitle: {
+    color: '#7f1d1d',
+    fontSize: 22,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   retryButton: {
     backgroundColor: '#0b5fff',
