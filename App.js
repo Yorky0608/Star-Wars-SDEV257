@@ -9,7 +9,6 @@ import {
   Animated,
   FlatList,
   Image,
-  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -61,11 +60,17 @@ function ScreenContent({ endpoint, getItemLabel, headerImageSource, screenName }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [submittedSearchTerm, setSubmittedSearchTerm] = useState('');
-  const [isModalVisible, setIsModalVisible] = useState(false);
   const listAnimation = useState(() => new Animated.Value(0))[0];
   const isOffline =
     networkState.isConnected === false || networkState.isInternetReachable === false;
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+  const filteredItems = items.filter((item) => {
+    if (!normalizedSearchTerm) {
+      return true;
+    }
+
+    return item.label.toLowerCase().includes(normalizedSearchTerm);
+  });
 
   const loadItems = async () => {
     if (isOffline) {
@@ -121,14 +126,7 @@ function ScreenContent({ endpoint, getItemLabel, headerImageSource, screenName }
   }, [error, items.length, listAnimation, loading]);
 
   const handleSearchSubmit = () => {
-    const trimmedSearchTerm = searchTerm.trim();
-
-    if (!trimmedSearchTerm) {
-      return;
-    }
-
-    setSubmittedSearchTerm(trimmedSearchTerm);
-    setIsModalVisible(true);
+    setSearchTerm((currentSearchTerm) => currentSearchTerm.trim());
   };
 
   const renderItem = ({ item }) => (
@@ -178,8 +176,16 @@ function ScreenContent({ endpoint, getItemLabel, headerImageSource, screenName }
       >
         <FlatList
           contentContainerStyle={styles.listContent}
-          data={items}
+          data={filteredItems}
           keyExtractor={(item) => item.id}
+          ListEmptyComponent={
+            <View style={styles.emptyStateCard}>
+              <Text style={styles.emptyStateTitle}>No matches found</Text>
+              <Text style={styles.emptyStateText}>
+                Try a different search for {screenName.toLowerCase()}.
+              </Text>
+            </View>
+          }
           renderItem={renderItem}
         />
       </Animated.View>
@@ -201,26 +207,10 @@ function ScreenContent({ endpoint, getItemLabel, headerImageSource, screenName }
           value={searchTerm}
         />
         <Pressable onPress={handleSearchSubmit} style={styles.searchButton}>
-          <Text style={styles.searchButtonText}>Submit</Text>
+          <Text style={styles.searchButtonText}>Search</Text>
         </Pressable>
       </View>
       {content()}
-      <Modal
-        animationType="fade"
-        onRequestClose={() => setIsModalVisible(false)}
-        transparent
-        visible={isModalVisible}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Submitted Search</Text>
-            <Text style={styles.modalValue}>{submittedSearchTerm}</Text>
-            <Pressable onPress={() => setIsModalVisible(false)} style={styles.modalButton}>
-              <Text style={styles.modalButtonText}>Close</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
       <StatusBar style="dark" />
     </View>
   );
@@ -372,6 +362,27 @@ const styles = StyleSheet.create({
     color: '#243b53',
     fontSize: 18,
   },
+  emptyStateCard: {
+    marginTop: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 20,
+    borderWidth: 1,
+    borderColor: '#d9e2ec',
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    gap: 8,
+  },
+  emptyStateTitle: {
+    color: '#102a43',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  emptyStateText: {
+    color: '#486581',
+    fontSize: 15,
+    textAlign: 'center',
+  },
   centeredState: {
     flex: 1,
     alignItems: 'center',
@@ -403,43 +414,5 @@ const styles = StyleSheet.create({
   retryButtonText: {
     color: '#ffffff',
     fontWeight: '600',
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(16, 42, 67, 0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  modalCard: {
-    width: '100%',
-    borderRadius: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 24,
-    backgroundColor: '#ffffff',
-    alignItems: 'center',
-    gap: 14,
-  },
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#102a43',
-  },
-  modalValue: {
-    fontSize: 18,
-    color: '#243b53',
-    textAlign: 'center',
-  },
-  modalButton: {
-    minWidth: 96,
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: '#0b5fff',
-  },
-  modalButtonText: {
-    color: '#ffffff',
-    fontWeight: '600',
-    textAlign: 'center',
   },
 });
