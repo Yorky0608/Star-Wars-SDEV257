@@ -3,14 +3,17 @@ import { useNetworkState } from 'expo-network';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createDrawerNavigator } from '@react-navigation/drawer';
-import { useEffect, useState } from 'react';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
   FlatList,
   Image,
+  PanResponder,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -19,6 +22,7 @@ import {
 
 const Tab = createBottomTabNavigator();
 const Drawer = createDrawerNavigator();
+const FilmStack = createNativeStackNavigator();
 const headerImages = {
   planets: require('./images/planets.jpg'),
   films: require('./images/films.jpg'),
@@ -33,6 +37,69 @@ function normalizeSearchValue(value) {
     .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function toTitleCase(value) {
+  return String(value || '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function SwipeLeftItem({ onSwipeLeft, children }) {
+  const translation = useRef(new Animated.Value(0)).current;
+
+  const resetPosition = () => {
+    Animated.spring(translation, {
+      toValue: 0,
+      useNativeDriver: true,
+      bounciness: 8,
+      speed: 18,
+    }).start();
+  };
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) => {
+          return Math.abs(gesture.dx) > 18 && Math.abs(gesture.dx) > Math.abs(gesture.dy);
+        },
+        onPanResponderMove: (_, gesture) => {
+          if (gesture.dx < 0) {
+            translation.setValue(Math.max(gesture.dx / 2.2, -72));
+          }
+        },
+        onPanResponderRelease: (_, gesture) => {
+          if (gesture.dx < -70 && Math.abs(gesture.dx) > Math.abs(gesture.dy)) {
+            Animated.timing(translation, {
+              toValue: -72,
+              duration: 110,
+              useNativeDriver: true,
+            }).start(() => {
+              onSwipeLeft();
+              resetPosition();
+            });
+            return;
+          }
+
+          resetPosition();
+        },
+        onPanResponderTerminate: resetPosition,
+      }),
+    [onSwipeLeft, translation]
+  );
+
+  return (
+    <Animated.View
+      {...panResponder.panHandlers}
+      style={{
+        transform: [{ translateX: translation }],
+      }}
+    >
+      {children}
+    </Animated.View>
+  );
 }
 
 function LazyHeaderImage({ source }) {
@@ -64,7 +131,14 @@ function LazyHeaderImage({ source }) {
   );
 }
 
-function ScreenContent({ endpoint, getItemLabel, getSearchTerms, headerImageSource, screenName }) {
+function ScreenContent({
+  endpoint,
+  getItemLabel,
+  getSearchTerms,
+  headerImageSource,
+  screenName,
+  onItemSwipeLeft,
+}) {
   const networkState = useNetworkState();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -122,6 +196,8 @@ function ScreenContent({ endpoint, getItemLabel, getSearchTerms, headerImageSour
           return {
             id: item.uid || item._id || item.properties?.url || item.url || `${endpoint}-${index}`,
             label,
+            detailUrl: item.url || item.properties?.url || '',
+            rawItem: item,
             searchText: normalizeSearchValue(searchableValues.join(' ')),
           };
         })
@@ -157,11 +233,20 @@ function ScreenContent({ endpoint, getItemLabel, getSearchTerms, headerImageSour
     setSearchTerm((currentSearchTerm) => currentSearchTerm.trim());
   };
 
-  const renderItem = ({ item }) => (
-    <View style={styles.card}>
-      <Text style={styles.cardText}>{item.label}</Text>
-    </View>
-  );
+  const renderItem = ({ item }) => {
+    const card = (
+      <View style={styles.card}>
+        <Text style={styles.cardText}>{item.label}</Text>
+        {onItemSwipeLeft ? <Text style={styles.swipeHint}>Swipe left for details</Text> : null}
+      </View>
+    );
+
+    if (!onItemSwipeLeft) {
+      return card;
+    }
+
+    return <SwipeLeftItem onSwipeLeft={() => onItemSwipeLeft(item)}>{card}</SwipeLeftItem>;
+  };
 
   const content = () => {
     if (loading) {
@@ -255,7 +340,7 @@ function PlanetsScreen() {
   );
 }
 
-function FilmsScreen() {
+function FilmsListScreen({ navigation }) {
   return (
     <ScreenContent
       endpoint="https://www.swapi.tech/api/films"
@@ -270,9 +355,137 @@ function FilmsScreen() {
           director,
         ];
       }}
+      onItemSwipeLeft={(item) => navigation.navigate('Film Details', { filmItem: item })}
       headerImageSource={headerImages.films}
       screenName="Films"
     />
+  );
+}
+
+function DetailField({ label, value }) {
+  return (
+    <View style={styles.detailFieldCard}>
+      <Text style={styles.detailFieldLabel}>{label}</Text>
+      <Text style={styles.detailFieldValue}>{value}</Text>
+    </View>
+  );
+}
+
+function FilmDetailsScreen({ route }) {
+  const filmItem = route.params?.filmItem;
+  const [filmDetail, setFilmDetail] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const loadFilmDetail = async () => {
+    setLoading(true);
+    setError('');
+
+    try {
+      const detailUrl = filmItem?.detailUrl || '';
+      const fallbackUrl = filmItem?.rawItem?.uid
+        ? `https://www.swapi.tech/api/films/${filmItem.rawItem.uid}`
+        : '';
+      const requestUrl = detailUrl || fallbackUrl;
+
+      if (!requestUrl) {
+        throw new Error('No film identifier found for this item.');
+      }
+
+      const response = await fetch(requestUrl);
+
+      if (!response.ok) {
+        throw new Error(`Request failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const filmResult = data.result || data;
+      setFilmDetail(filmResult);
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : 'Unable to load film details.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadFilmDetail();
+  }, []);
+
+  const properties = filmDetail?.properties || {};
+  const title = properties.title || filmItem?.label || 'Film Details';
+  const openingCrawl = properties.opening_crawl || '';
+  const detailEntries = Object.entries(properties).filter(
+    ([key]) => !['title', 'opening_crawl'].includes(key)
+  );
+
+  const formatValue = (value) => {
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        return 'None listed';
+      }
+
+      return `${value.length} item(s)\n${value.join('\n')}`;
+    }
+
+    if (value === null || value === undefined || value === '') {
+      return 'Not available';
+    }
+
+    return String(value);
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.centeredState}>
+        <ActivityIndicator color="#0b5fff" size="large" />
+        <Text style={styles.stateText}>Loading film details...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.centeredState}>
+        <Text style={styles.errorTitle}>Unable to load film details</Text>
+        <Text style={styles.errorText}>{error}</Text>
+        <Pressable onPress={loadFilmDetail} style={styles.retryButton}>
+          <Text style={styles.retryButtonText}>Try Again</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView contentContainerStyle={styles.detailContent} style={styles.detailContainer}>
+      <View style={styles.detailHeroCard}>
+        <Text style={styles.detailTitle}>{title}</Text>
+        <Text style={styles.detailSubtitle}>Episode {properties.episode_id || 'Unknown'}</Text>
+      </View>
+
+      {openingCrawl ? (
+        <View style={styles.openingCrawlCard}>
+          <Text style={styles.sectionHeading}>Opening Crawl</Text>
+          <Text style={styles.openingCrawlText}>{openingCrawl}</Text>
+        </View>
+      ) : null}
+
+      <View style={styles.detailSection}>
+        <Text style={styles.sectionHeading}>Film Data</Text>
+        {detailEntries.map(([key, value]) => (
+          <DetailField key={key} label={toTitleCase(key)} value={formatValue(value)} />
+        ))}
+      </View>
+    </ScrollView>
+  );
+}
+
+function FilmsScreen() {
+  return (
+    <FilmStack.Navigator>
+      <FilmStack.Screen component={FilmsListScreen} name="Films List" options={{ title: 'Films' }} />
+      <FilmStack.Screen component={FilmDetailsScreen} name="Film Details" options={{ title: 'Film Details' }} />
+    </FilmStack.Navigator>
   );
 }
 
@@ -400,6 +613,11 @@ const styles = StyleSheet.create({
     color: '#243b53',
     fontSize: 18,
   },
+  swipeHint: {
+    marginTop: 6,
+    color: '#486581',
+    fontSize: 12,
+  },
   emptyStateCard: {
     marginTop: 20,
     paddingHorizontal: 18,
@@ -452,5 +670,71 @@ const styles = StyleSheet.create({
   retryButtonText: {
     color: '#ffffff',
     fontWeight: '600',
+  },
+  detailContainer: {
+    flex: 1,
+    backgroundColor: '#f4f7fb',
+  },
+  detailContent: {
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    gap: 14,
+  },
+  detailHeroCard: {
+    padding: 16,
+    borderRadius: 14,
+    backgroundColor: '#0b5fff',
+  },
+  detailTitle: {
+    color: '#ffffff',
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  detailSubtitle: {
+    color: '#dbe8ff',
+    marginTop: 6,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  openingCrawlCard: {
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#d9e2ec',
+    backgroundColor: '#ffffff',
+  },
+  openingCrawlText: {
+    marginTop: 8,
+    color: '#334e68',
+    lineHeight: 22,
+    fontSize: 15,
+  },
+  detailSection: {
+    gap: 10,
+  },
+  sectionHeading: {
+    color: '#102a43',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  detailFieldCard: {
+    borderWidth: 1,
+    borderColor: '#d9e2ec',
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    padding: 12,
+  },
+  detailFieldLabel: {
+    color: '#486581',
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  detailFieldValue: {
+    color: '#102a43',
+    fontSize: 15,
+    lineHeight: 21,
   },
 });
