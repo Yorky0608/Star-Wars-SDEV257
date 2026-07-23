@@ -25,6 +25,16 @@ const headerImages = {
   spaceships: require('./images/ships.jpg'),
 };
 
+function normalizeSearchValue(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function LazyHeaderImage({ source }) {
   const [shouldLoadImage, setShouldLoadImage] = useState(false);
   const [isImageLoading, setIsImageLoading] = useState(true);
@@ -54,7 +64,7 @@ function LazyHeaderImage({ source }) {
   );
 }
 
-function ScreenContent({ endpoint, getItemLabel, headerImageSource, screenName }) {
+function ScreenContent({ endpoint, getItemLabel, getSearchTerms, headerImageSource, screenName }) {
   const networkState = useNetworkState();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -63,13 +73,22 @@ function ScreenContent({ endpoint, getItemLabel, headerImageSource, screenName }
   const listAnimation = useState(() => new Animated.Value(0))[0];
   const isOffline =
     networkState.isConnected === false || networkState.isInternetReachable === false;
-  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+  const normalizedSearchTerm = normalizeSearchValue(searchTerm);
+  const searchTokens = normalizedSearchTerm ? normalizedSearchTerm.split(' ') : [];
   const filteredItems = items.filter((item) => {
-    if (!normalizedSearchTerm) {
+    if (searchTokens.length === 0) {
       return true;
     }
 
-    return item.label.toLowerCase().includes(normalizedSearchTerm);
+    const searchableWords = item.searchText.split(' ');
+
+    return searchTokens.every((token) => {
+      if (token.length <= 2) {
+        return searchableWords.includes(token);
+      }
+
+      return item.searchText.includes(token);
+    });
   });
 
   const loadItems = async () => {
@@ -93,10 +112,19 @@ function ScreenContent({ endpoint, getItemLabel, headerImageSource, screenName }
       const data = await response.json();
       const results = data.results || data.result || [];
       const normalizedItems = results
-        .map((item) => ({
-          id: item.uid || item._id || item.properties?.url || item.url || String(Math.random()),
-          label: getItemLabel(item),
-        }))
+        .map((item, index) => {
+          const label = getItemLabel(item);
+          const extraSearchTerms = getSearchTerms ? getSearchTerms(item) : [];
+          const searchableValues = [label, ...(Array.isArray(extraSearchTerms) ? extraSearchTerms : [])]
+            .filter(Boolean)
+            .map((value) => String(value));
+
+          return {
+            id: item.uid || item._id || item.properties?.url || item.url || `${endpoint}-${index}`,
+            label,
+            searchText: normalizeSearchValue(searchableValues.join(' ')),
+          };
+        })
         .filter((item) => Boolean(item.label));
 
       setItems(normalizedItems);
@@ -232,6 +260,16 @@ function FilmsScreen() {
     <ScreenContent
       endpoint="https://www.swapi.tech/api/films"
       getItemLabel={(item) => item.title || item.properties?.title}
+      getSearchTerms={(item) => {
+        const episodeId = item.episode_id || item.properties?.episode_id;
+        const director = item.director || item.properties?.director;
+
+        return [
+          episodeId ? `episode ${episodeId}` : '',
+          episodeId ? `ep ${episodeId}` : '',
+          director,
+        ];
+      }}
       headerImageSource={headerImages.films}
       screenName="Films"
     />
